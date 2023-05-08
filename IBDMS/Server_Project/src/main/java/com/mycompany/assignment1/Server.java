@@ -54,7 +54,7 @@ public class Server extends JFrame implements ActionListener, Runnable {
             this.drones = drones;
             this.fires = fires;
         }
-
+	    
         @Override
         protected void paintComponent(Graphics g) {
             super.paintComponent(g);
