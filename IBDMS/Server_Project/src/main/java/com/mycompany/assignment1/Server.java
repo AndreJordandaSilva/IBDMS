@@ -15,19 +15,29 @@ import java.util.HashMap;
 import java.util.Iterator;
 import javax.swing.*;
 
+import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
+
 /**
- *
  * @author diamo
  */
 public class Server extends JFrame implements ActionListener, Runnable {
-    
+
+    private static java.sql.Connection mydb_connection;
+    private static final String URL = "jdbc:mysql://localhost:3306/mysql";
+    private static final String USERNAME = "root";
+    private static final String PASSWORD = "Andres87";
+
     // If recall has been called
     static boolean recallStatus = false;
-    
+
     // ArrayLists for Drone and Fire Objects
     static ArrayList<DroneDetails> drones = new ArrayList<>();
     static ArrayList<FireDetails> fires = new ArrayList<>();
-    
+
     // GUI Setup, all elements of GUI declared
     private JLabel titleText = new JLabel("Drone Server");
     private static JTextArea outputText = new JTextArea(25, 25);
@@ -40,11 +50,11 @@ public class Server extends JFrame implements ActionListener, Runnable {
     private JButton shutDownButton = new JButton("Shut Down");
     private JScrollPane scrollPane; // Scroll pane for the text area
     private MapPanel mapPanel;
-    
+
     // Hash Maps to store positions of drones that need to be moved
     static HashMap<Integer, Integer> newXPositions = new HashMap<>();
     static HashMap<Integer, Integer> newYPositions = new HashMap<>();
-    
+
     public class MapPanel extends JPanel {
 
         private ArrayList<DroneDetails> drones;
@@ -54,14 +64,14 @@ public class Server extends JFrame implements ActionListener, Runnable {
             this.drones = drones;
             this.fires = fires;
         }
-	    
+
         @Override
         protected void paintComponent(Graphics g) {
             super.paintComponent(g);
 
             // Set background color of map panel
             setBackground(Color.WHITE);
-            
+
             // Draw drones as blue circles with drone id
             for (DroneDetails p : drones) {
                 if (p.getActive()) {
@@ -70,12 +80,12 @@ public class Server extends JFrame implements ActionListener, Runnable {
                     int y = (100 - p.getY_pos()) * 2;
                     int size = 10;
                     g.setColor(Color.BLUE);
-                    g.fillOval(x - size/2, y - size/2, size, size);
+                    g.fillOval(x - size / 2, y - size / 2, size, size);
                     g.setColor(Color.BLACK);
                     g.drawString("Drone " + p.getId(), x - 30, y - 5);
                 }
             }
-            
+
             // Draw fires as red circles with fire id and severity
             for (FireDetails p : fires) {
                 // Converts coordinates for use on 400 by 400 grid
@@ -84,38 +94,38 @@ public class Server extends JFrame implements ActionListener, Runnable {
                 int severity = p.getSeverity();
                 int size = 10;
                 g.setColor(Color.RED);
-                g.fillOval(x - size/2, y - size/2, size, size);
+                g.fillOval(x - size / 2, y - size / 2, size, size);
                 g.setColor(Color.BLACK);
                 g.drawString("Fire " + p.getId() + " (" + severity + ")", x - 30, y - 5);
             }
         }
     }
-    
+
     Server() {
         // Sets settings for java swing GUI Frame
         super("Server GUI");
-        
+
         // Sets font for title
         titleText.setFont(new Font("Arial", Font.PLAIN, 30));
-        
+
         // Sets X button to do nothing, shut down should be used to exit
         setDefaultCloseOperation(JFrame.DO_NOTHING_ON_CLOSE);
-        
+
         // Other GUI settings
         setSize(750, 600);
         this.setLayout(new FlowLayout());
         this.setResizable(false);
-        
+
         // Heading Panel
         JPanel headingPanel = new JPanel();
         headingPanel.setPreferredSize(new Dimension(750, 40));
         headingPanel.add(titleText);
-        
+
         // Set Text Area Wrapping and read-only
         outputText.setEditable(false);
         outputText.setLineWrap(true);
         outputText.setWrapStyleWord(true);
-        
+
         // Button Panel
         JPanel buttonPanel = new JPanel();
         buttonPanel.setPreferredSize(new Dimension(750, 40));
@@ -123,104 +133,119 @@ public class Server extends JFrame implements ActionListener, Runnable {
         buttonPanel.add(recallButton);
         buttonPanel.add(moveButton);
         buttonPanel.add(shutDownButton);
-        
+
         // Bottom panel
         JPanel bottomPanel = new JPanel();
-        
+
         // Output Panel
         JPanel outputPanel = new JPanel();
         outputPanel.setPreferredSize(new Dimension(300, 500));
         outputPanel.add(headingText);
         outputPanel.add(outputText);
-        
+
         // Text Area Vertical ScrollBar
         scrollPane = new JScrollPane(outputText);
         scrollPane.setHorizontalScrollBarPolicy(JScrollPane.HORIZONTAL_SCROLLBAR_NEVER);
         outputPanel.add(scrollPane);
-        
-         // Map Panel
+
+        // Map Panel
         mapPanel = new MapPanel(drones, fires);
         mapPanel.setPreferredSize(new Dimension(400, 400));
-        
+
         // Outer Map Panel with text
         JPanel outerMapPanel = new JPanel();
         outerMapPanel.setPreferredSize(new Dimension(400, 500));
-        
+
         // Add panels and text to GUI
         add(headingPanel);
         add(buttonText);
         add(buttonPanel);
-        
+
         outerMapPanel.add(mapText);
         outerMapPanel.add(mapPanel);
         bottomPanel.add(outputPanel);
         bottomPanel.add(outerMapPanel);
-        
+
         add(bottomPanel);
-        
+
         // Makes the GUI visible
         this.setVisible(true);
-        
+
         // Action Listeners for Buttons
         deleteButton.addActionListener(this);
         recallButton.addActionListener(this);
         moveButton.addActionListener(this);
         shutDownButton.addActionListener(this);
     }
-    
+
     @Override
     public void actionPerformed(ActionEvent e) {
         // This runs when an object action is clicked
         // Gets the name of the object clicked and finds the case
         // Runs the corresponding method and breaks the switch
-        String actionString=e.getActionCommand();
-        switch(actionString) {
+        String actionString = e.getActionCommand();
+        switch (actionString) {
             case "Delete Fire":
                 deleteFire();
                 break;
-                
+
             case "Recall Drones":
                 recallDrones();
                 break;
-                
+
             case "Move Drone":
                 moveDrone();
                 break;
-                
+
             case "Shut Down":
                 shutDown();
                 break;
         }
     }
-    
+
     public static void main(String[] args) {
+        System.out.println("Program Started");
+        try {
+            mydb_connection = DriverManager.getConnection(URL, USERNAME, PASSWORD);
+            System.out.println("Connection to the database established successfully.");
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        if (mydb_connection == null)
+        {
+            System.out.println("Failed to establish the database connection.");
+            System.exit(0);
+        }
+
         // Calls function to read data from files
         readData();
-        
+
         // Starts thread to update map and GUI because that's how it works apparently
         Server obj = new Server();
         Thread thread = new Thread(obj);
         thread.start();
-        
+
         // Sets up connection listener with port 8888
         try {
             int serverPort = 8888;
             ServerSocket listenSocket = new ServerSocket(serverPort);
-            
+
             // Constantly on loop, checks for connections and sends connections to new thread
-            while(true) {
+            while (true) {
                 Socket clientSocket = listenSocket.accept();
                 Connection c = new Connection(clientSocket);
             }
-            
-        }   catch(IOException e) {System.out.println("Listen Socket : " + e.getMessage());}
+
+        } catch (IOException e) {
+            System.out.println("Listen Socket : " + e.getMessage());
+        }
     }
-    
+
     static boolean ifRecall() {
         // Returns if the recall status is true
         return recallStatus;
     }
-    
+
     static void addDrone(DroneDetails tempDrone) {
         // Assumes drone is new until found otherwise
         boolean newDrone = true;
@@ -232,43 +257,43 @@ public class Server extends JFrame implements ActionListener, Runnable {
         is not new.
         */
         for (DroneDetails p : drones) {
-                if (p.getId() == tempDrone.getId()) {
-                    
-                    if (p.getActive()) {
-                        wasActive = true;
-                    }
-                    
-                    p.setName(tempDrone.getName());
-                    p.setX_pos(tempDrone.getX_pos());
-                    p.setY_pos(tempDrone.getY_pos());
-                    p.setActive(tempDrone.getActive());
+            if (p.getId() == tempDrone.getId()) {
 
-                    newDrone = false;
-                    
-                    if (p.getActive()) {
-                        
-                        if (wasActive) {
-                            outputLog("Drone " + p.getId() + " moved to coordinates: " + p.getX_pos() + ", " + p.getY_pos() + ".");
-                        } else {
-                            outputLog("Drone Reregistered. ID: " + p.getId() + " Name: " + p.getName());
-                        }
-                    } else {
-                        outputLog("Drone " + p.getId() + " recalled.");
-                    }
-                    break;
+                if (p.getActive()) {
+                    wasActive = true;
                 }
+
+                p.setName(tempDrone.getName());
+                p.setX_pos(tempDrone.getX_pos());
+                p.setY_pos(tempDrone.getY_pos());
+                p.setActive(tempDrone.getActive());
+
+                newDrone = false;
+
+                if (p.getActive()) {
+
+                    if (wasActive) {
+                        outputLog("Drone " + p.getId() + " moved to coordinates: " + p.getX_pos() + ", " + p.getY_pos() + ".");
+                    } else {
+                        outputLog("Drone Reregistered. ID: " + p.getId() + " Name: " + p.getName());
+                    }
+                } else {
+                    outputLog("Drone " + p.getId() + " recalled.");
+                }
+                break;
+            }
         }
-        
+
         // If the drone is new, creates the drone object and adds it to the arraylist
         if (newDrone) {
             DroneDetails drone = new DroneDetails(tempDrone.getId(), tempDrone.getName(), tempDrone.getX_pos(), tempDrone.getY_pos(), tempDrone.getActive());
             drones.add(drone);
             outputLog("New Drone Registered. ID: " + drone.getId() + " Name: " + drone.getName());
         }
-        
+
         // System.out.println(drones.size() + " Drone Objects");
     }
-    
+
     static void addFire(FireDetails tempFire) {
         
         /*
@@ -283,102 +308,199 @@ public class Server extends JFrame implements ActionListener, Runnable {
             outputLog("New Fire Spotted at " + fire.getX_pos() + ", " + fire.getY_pos() + " with severity " + fire.getSeverity() + ".");
         } else {
             int max = 0;
-            
+
             for (FireDetails p : fires) {
                 if (p.getId() > max) {
                     max = p.getId();
                 }
             }
-            
+
             int fireId = max + 1;
-            
+
             FireDetails fire = new FireDetails(fireId, tempFire.getX_pos(), tempFire.getY_pos(), tempFire.getDroneId(), tempFire.getSeverity());
             fires.add(fire);
             outputLog("New Fire Spotted at " + fire.getX_pos() + ", " + fire.getY_pos() + " with severity " + fire.getSeverity() + ".");
         }
-        
-        
-        
-    }
-    
-    static void readData() {
-        // Reads ArrayList from binary file drones.bin
-        try (
-            FileInputStream fileIn = new FileInputStream("drones.bin");
-            ObjectInputStream objectIn = new ObjectInputStream(fileIn)) {
-            
-            ArrayList<DroneDetails> tempDrones = (ArrayList<DroneDetails>) objectIn.readObject();
-            /* If the file is empty the tempDrones arraylist will be null
-            If this is the case it will not set this temp arraylist to be
-            the main arraylist. */
-            if (tempDrones != null) {
-                drones = tempDrones;
-            }
-            
-        } catch(EOFException | FileNotFoundException e) {
-        } catch(IOException e) {e.printStackTrace();
-	} catch(ClassNotFoundException ex){ex.printStackTrace();
-        }
-        
-        outputLog(drones.size() + " drones loaded.");
-        
-        // Reads file, each variable it checks is seperated by the delimiter, the comma
-        // Gets variables from each line and adds it to a fire object then the ArrayList
-        String line = "";
-        String csvDelimiter = ",";
-        
-        try (BufferedReader br = new BufferedReader(new FileReader("fires.csv"))) {
-        
-            // Read heading line
-            br.readLine();
-            
-            // Read remaining lines
-            while ((line = br.readLine()) != null) {
-               String[] data = line.split(csvDelimiter);
-               int id = Integer.parseInt(data[0]);
-               int x_pos = Integer.parseInt(data[1]);
-               int y_pos = Integer.parseInt(data[2]);
-               int droneId = Integer.parseInt(data[3]);
-               int severity = Integer.parseInt(data[4]);
 
-               FireDetails fire = new FireDetails(id, x_pos, y_pos, droneId, severity);
-               fires.add(fire);
-         }
-        } catch (IOException e) {
-           e.printStackTrace();
-        } catch (NumberFormatException e) { e.printStackTrace();
-        }
-        
-        outputLog(fires.size() + " fires loaded.");
+
     }
-    
-    static void saveData() {
-        // Saves drones arraylist to drones.bin
-        try (
-            FileOutputStream fileOut = new FileOutputStream("drones.bin");
-            ObjectOutputStream objectOut = new ObjectOutputStream(fileOut)
-            ) {
-            objectOut.writeObject(drones);
-        } catch (IOException e) {
+
+    static void readData() {
+        // Read drone data from the database
+        try (Statement stmt = mydb_connection.createStatement();
+             ResultSet rs = stmt.executeQuery("SELECT * FROM drone")) {
+
+            drones.clear();
+            while (rs.next()) {
+                int id = rs.getInt("id");
+                String name = rs.getString("name");
+                int xpos = rs.getInt("xpos");
+                int ypos = rs.getInt("ypos");
+
+                DroneDetails drone = new DroneDetails(id, name, xpos, ypos);
+                drones.add(drone);
+            }
+            outputLog(drones.size() + " drones loaded.");
+
+        } catch (SQLException e) {
             e.printStackTrace();
         }
-        
-        // Saves each object in fires ArrayList to fires.csv
-        // Uses object .toCSV() to format the string with variables having commas between
-        try {
-            FileWriter writer = new FileWriter("fires.csv", false);
-            
-            // Writes heading line with column names
-            writer.write("Fire ID,X Position,Y Position,Reporting Drone ID,Severity\n");
-            
-            for (FireDetails p : fires) {
-                writer.write(p.toCSV() + "\n");
+
+        // Read fire data from the database
+        try (Statement stmt = mydb_connection.createStatement();
+             ResultSet rs = stmt.executeQuery("SELECT * FROM fire")) {
+
+            fires.clear();
+            while (rs.next()) {
+                int id = rs.getInt("id");
+               int isActive = rs.getInt("isActive");
+                int intensity = rs.getInt("intensity");
+//                int burningAreaRadius = rs.getInt("burningAreaRadius");
+                int x_pos = rs.getInt("xpos");
+                int y_pos = rs.getInt("ypos");
+
+//                FireDetails fire = new FireDetails(id, isActive, intensity, burningAreaRadius, xpos, ypos);
+                FireDetails fire = new FireDetails(id, x_pos, y_pos, isActive, intensity);
+                fires.add(fire);
+
             }
-            writer.close();
-        } catch(IOException e) {e.printStackTrace();
+            outputLog(fires.size() + " fires loaded.");
+
+        } catch (SQLException e) {
+            e.printStackTrace();
         }
     }
-    
+
+    static void saveData() {
+        // Save drone data to the database
+        try {
+            mydb_connection.setAutoCommit(false);
+
+            for (DroneDetails drone : drones) {
+                String query = "REPLACE INTO drone (id, name, xpos, ypos) VALUES (?, ?, ?, ?)";
+                PreparedStatement pstmt = mydb_connection.prepareStatement(query);
+                pstmt.setInt(1, drone.getId());
+                pstmt.setString(2, drone.getName());
+                pstmt.setInt(3, drone.getX_pos());
+                pstmt.setInt(4, drone.getY_pos());
+
+                pstmt.executeUpdate();
+            }
+            mydb_connection.commit();
+            mydb_connection.setAutoCommit(true);
+
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+
+        // Save fire data to the database
+        try {
+            mydb_connection.setAutoCommit(false);
+
+            for (FireDetails fire : fires) {
+                String query = "REPLACE INTO fire (id, isActive, intensity, xpos,ypos) VALUES (?, ?, ?, ?, ?)";
+                PreparedStatement pstmt = mydb_connection.prepareStatement(query);
+                pstmt.setInt(1, fire.getId());
+                pstmt.setInt(2, fire.getDroneId());
+                pstmt.setInt(3, fire.getSeverity());
+//                pstmt.setInt(4, fire.getBurningAreaRadius());
+                pstmt.setInt(4, fire.getX_pos());
+                pstmt.setInt(5, fire.getY_pos());
+                pstmt.executeUpdate();
+            }
+            mydb_connection.commit();
+            mydb_connection.setAutoCommit(true);
+
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
+
+//
+//    static void readData() {
+//        // Reads ArrayList from binary file drones.bin
+//        try (
+//                FileInputStream fileIn = new FileInputStream("drones.bin");
+//                ObjectInputStream objectIn = new ObjectInputStream(fileIn)) {
+//
+//            ArrayList<DroneDetails> tempDrones = (ArrayList<DroneDetails>) objectIn.readObject();
+//            /* If the file is empty the tempDrones arraylist will be null
+//            If this is the case it will not set this temp arraylist to be
+//            the main arraylist. */
+//            if (tempDrones != null) {
+//                drones = tempDrones;
+//            }
+//
+//        } catch (EOFException | FileNotFoundException e) {
+//        } catch (IOException e) {
+//            e.printStackTrace();
+//        } catch (ClassNotFoundException ex) {
+//            ex.printStackTrace();
+//        }
+//
+//        outputLog(drones.size() + " drones loaded.");
+//
+//        // Reads file, each variable it checks is seperated by the delimiter, the comma
+//        // Gets variables from each line and adds it to a fire object then the ArrayList
+//        String line = "";
+//        String csvDelimiter = ",";
+//
+//        try (BufferedReader br = new BufferedReader(new FileReader("fires.csv"))) {
+//
+//            // Read heading line
+//            br.readLine();
+//
+//            // Read remaining lines
+//            while ((line = br.readLine()) != null) {
+//                String[] data = line.split(csvDelimiter);
+//                int id = Integer.parseInt(data[0]);
+//                int x_pos = Integer.parseInt(data[1]);
+//                int y_pos = Integer.parseInt(data[2]);
+//                int droneId = Integer.parseInt(data[3]);
+//                int severity = Integer.parseInt(data[4]);
+//
+//                FireDetails fire = new FireDetails(id, x_pos, y_pos, droneId, severity);
+//                fires.add(fire);
+//            }
+//        } catch (IOException e) {
+//            e.printStackTrace();
+//        } catch (NumberFormatException e) {
+//            e.printStackTrace();
+//        }
+//
+//        outputLog(fires.size() + " fires loaded.");
+//    }
+//
+//    static void saveData() {
+//        // Saves drones arraylist to drones.bin
+//        try (
+//                FileOutputStream fileOut = new FileOutputStream("drones.bin");
+//                ObjectOutputStream objectOut = new ObjectOutputStream(fileOut)
+//        ) {
+//            objectOut.writeObject(drones);
+//        } catch (IOException e) {
+//            e.printStackTrace();
+//        }
+//
+//        // Saves each object in fires ArrayList to fires.csv
+//        // Uses object .toCSV() to format the string with variables having commas between
+//        try {
+//            FileWriter writer = new FileWriter("fires.csv", false);
+//
+//            // Writes heading line with column names
+//            writer.write("Fire ID,X Position,Y Position,Reporting Drone ID,Severity\n");
+//
+//            for (FireDetails p : fires) {
+//                writer.write(p.toCSV() + "\n");
+//            }
+//            writer.close();
+//        } catch (IOException e) {
+//            e.printStackTrace();
+//        }
+//    }
+
+
     public void deleteFire() {
         // Triggered by Delete Fire Button
         // intId is the id that'll be entered
@@ -401,28 +523,28 @@ public class Server extends JFrame implements ActionListener, Runnable {
                 JOptionPane.showMessageDialog(null, "ID must be numerical.");
             }
         }
-        
+
         // Iterator goes through ArrayList until it finds the ID, removes the object from ArrayList
         // Originally used a for loop, didn't work for some reason
         // If fire existed sets boolean to true, else will output no fire found message
         boolean fireExists = false;
-        
+
         Iterator<FireDetails> iterator = fires.iterator();
-            while (iterator.hasNext()) {
-                FireDetails p = iterator.next();
-                if (p.getId() == intId) {
-                    iterator.remove();
-                    outputLog("Fire " + intId + " removed.");
-                    fireExists = true;
-                    break;
+        while (iterator.hasNext()) {
+            FireDetails p = iterator.next();
+            if (p.getId() == intId) {
+                iterator.remove();
+                outputLog("Fire " + intId + " removed.");
+                fireExists = true;
+                break;
             }
         }
-        
+
         if (!fireExists) {
             outputLog("Fire " + intId + " not found.");
         }
     }
-    
+
     public void recallDrones() {
         // Checks if a recall is initiated
         if (recallStatus) {
@@ -433,7 +555,7 @@ public class Server extends JFrame implements ActionListener, Runnable {
             outputLog("Recall initiated.");
         }
     }
-    
+
     public void moveDrone() {
         // Triggered by move drone button
         // Initialisation of variables, -0 does not exist as a coordinate
@@ -459,7 +581,7 @@ public class Server extends JFrame implements ActionListener, Runnable {
                 JOptionPane.showMessageDialog(null, "ID must be numerical.");
             }
         }
-        
+
         // Searches for ArrayList to check if a drone with the ID entered exists
         // If drone is active then it is good to be moved and droneExists is changed to true
         for (DroneDetails p : drones) {
@@ -469,13 +591,13 @@ public class Server extends JFrame implements ActionListener, Runnable {
                 }
             }
         }
-        
+
         // If no drone exists that is active then droneExists will be false and the user will be given an error message
         if (!droneExists) {
             JOptionPane.showMessageDialog(null, "Drone with ID " + intId + " does not exist or is not active.");
             return;
         }
-        
+
         // Opens option pane prompting user to enter an X position for the drone to be moved to
         while (true) {
             String enteredX = JOptionPane.showInputDialog(null, "Enter new X position for drone " + intId + ".");
@@ -489,7 +611,7 @@ public class Server extends JFrame implements ActionListener, Runnable {
                 JOptionPane.showMessageDialog(null, "ID must be numerical.");
             }
         }
-        
+
         // Opens option pane prompting user to enter an X position for the drone to be moved to
         while (true) {
             String enteredY = JOptionPane.showInputDialog(null, "Enter new Y position for drone " + intId + ".");
@@ -503,19 +625,19 @@ public class Server extends JFrame implements ActionListener, Runnable {
                 JOptionPane.showMessageDialog(null, "ID must be numerical.");
             }
         }
-        
+
         // Removes drone id from hash map in case it's there
         newXPositions.remove(intId);
         newYPositions.remove(intId);
-        
+
         // When all information has been inputted, ids and new positions are added to hash maps
         newXPositions.put(intId, newX);
         newYPositions.put(intId, newY);
-        
+
         // Outputs message to confirm move
         outputLog("Drone " + intId + " will be moved to " + newX + ", " + newY + ".");
     }
-    
+
     public void shutDown() {
         /*
         Sets recall status to true
@@ -530,9 +652,9 @@ public class Server extends JFrame implements ActionListener, Runnable {
         */
         recallStatus = true;
         boolean dronesActive;
-        
+
         outputLog("Recall Intiated.");
-        
+
         while (true) {
             dronesActive = false;
             for (DroneDetails p : drones) {
@@ -540,7 +662,7 @@ public class Server extends JFrame implements ActionListener, Runnable {
                     dronesActive = true;
                 }
             }
-            
+
             if (!dronesActive) {
                 outputLog("Shut Down Commencing.");
                 saveData();
@@ -548,7 +670,7 @@ public class Server extends JFrame implements ActionListener, Runnable {
             }
         }
     }
-    
+
     public static void outputLog(String message) {
         // Outputs message given through the output text area along with a newline
         outputText.append(message + "\n");
@@ -560,7 +682,7 @@ public class Server extends JFrame implements ActionListener, Runnable {
     public void run() {
         // Runs constantly
         while (true) {
-            
+
             // Repaints mapPanel
             mapPanel.repaint();
         }
@@ -572,52 +694,54 @@ class Connection extends Thread {
     ObjectInputStream in;
     ObjectOutputStream out;
     Socket clientSocket;
-    
-    public Connection (Socket aClientSocket) {
-        
+
+    public Connection(Socket aClientSocket) {
+
         // Assigns streams to the socket and starts the thread run()
         try {
             clientSocket = aClientSocket;
-            in = new ObjectInputStream( clientSocket.getInputStream());
-            out =new ObjectOutputStream( clientSocket.getOutputStream());
+            in = new ObjectInputStream(clientSocket.getInputStream());
+            out = new ObjectOutputStream(clientSocket.getOutputStream());
             this.start();
-	} catch(IOException e) {System.out.println("Connection:"+e.getMessage());}
+        } catch (IOException e) {
+            System.out.println("Connection:" + e.getMessage());
+        }
     }
-    
+
     @Override
     public void run() {
         try {
-            
+
             String message = "";
             String clientMessage = "";
-            
+
             // Movement variables if drone is outside of boundaries
             // New positions will be set if required
             boolean outOfBounds = false;
             boolean movementRequired = false;
-            
+
             // Gets drone object from client and adds it to tempDrone object
-            DroneDetails tempDrone = (DroneDetails)in.readObject();
-            
+            DroneDetails tempDrone = (DroneDetails) in.readObject();
+
             // Confirm drone object
             message = "confirmed";
             out.writeObject(message);
-            
+
             // Receives how many fires there are and confirms receival
-            Integer numFires = (Integer)in.readObject();
+            Integer numFires = (Integer) in.readObject();
             out.writeObject(message);
-            
+
             // Loops for how many fires there are and receives the fire objects
             // Sends fire object to addFire(); for it to be added, sends confirmation message
             if (numFires > 0) {
                 for (int i = 0; i < numFires; i++) {
-                    FireDetails tempFire = (FireDetails)in.readObject();
+                    FireDetails tempFire = (FireDetails) in.readObject();
                     Server.addFire(tempFire);
                     message = "confirmed";
                     out.writeObject(message);
                 }
             }
-            
+
             // Checks if drone is in hashmaps for movements
             // If so sets movementRequired to true, updates drone X and Y positions
             for (Integer i : Server.newXPositions.keySet()) {
@@ -627,7 +751,7 @@ class Connection extends Thread {
                     Server.newXPositions.remove(i);
                 }
             }
-            
+
             for (Integer i : Server.newYPositions.keySet()) {
                 if (i == tempDrone.getId()) {
                     movementRequired = true;
@@ -635,7 +759,7 @@ class Connection extends Thread {
                     Server.newYPositions.remove(i);
                 }
             }
-            
+
             // Check x positions, set if out of bounds
             if (tempDrone.getX_pos() > 100) {
                 outOfBounds = true;
@@ -644,7 +768,7 @@ class Connection extends Thread {
                 outOfBounds = true;
                 tempDrone.setX_pos(-80);
             }
-            
+
             // Check y positions, set if out of bounds
             if (tempDrone.getY_pos() > 100) {
                 outOfBounds = true;
@@ -653,13 +777,13 @@ class Connection extends Thread {
                 outOfBounds = true;
                 tempDrone.setY_pos(-80);
             }
-            
+
             // If a Recall is active it will respond to the client saying so
             // Recall is done first since it matters the most, position doesn't matter if it's being recalled to 0,0 regardless
             if (Server.ifRecall()) {
                 message = "recall";
                 out.writeObject(message);
-                clientMessage = (String)in.readObject();
+                clientMessage = (String) in.readObject();
                 if (clientMessage.equals("Recall Confirmed")) {
                     // If drone confirms recall, set the drone active to false
                     tempDrone.setActive(false);
@@ -670,18 +794,18 @@ class Connection extends Thread {
                 // Sends move message and receives confirmation between object writes
                 message = "move";
                 out.writeObject(message);
-                clientMessage = (String)in.readObject();
+                clientMessage = (String) in.readObject();
                 out.writeObject(tempDrone.getX_pos());
-                clientMessage = (String)in.readObject();
+                clientMessage = (String) in.readObject();
                 out.writeObject(tempDrone.getY_pos());
-                clientMessage = (String)in.readObject();
-                
+                clientMessage = (String) in.readObject();
+
                 // Messages outputed based on if the drone was moved or out of bounds
                 // Not an if else because both messages could be required
                 if (movementRequired) {
                     Server.outputLog("Drone " + tempDrone.getId() + " successfully moved.");
                 }
-                
+
                 if (outOfBounds) {
                     Server.outputLog("Drone " + tempDrone.getId() + " outside of boundaries. Moved back.");
                 }
@@ -690,18 +814,25 @@ class Connection extends Thread {
                 message = "confirmed";
                 out.writeObject(message);
             }
-            
+
             // Sends tempDrone to the addDrone function to get it in the ArrayList
             Server.addDrone(tempDrone);
-            
+
             System.out.println(tempDrone);
-            
+
             System.out.println("There are " + numFires + " new fires.");
             System.out.println("There are " + Server.fires.size() + " fires.");
-            
-        }catch (EOFException e){System.out.println("EOF:"+e.getMessage());
-        } catch(IOException e) {System.out.println("readline:"+e.getMessage());
-	} catch(ClassNotFoundException ex){ ex.printStackTrace();
-	} finally{ try {clientSocket.close();}catch (IOException e){/*close failed*/}}
+
+        } catch (EOFException e) {
+            System.out.println("EOF:" + e.getMessage());
+        } catch (IOException e) {
+            System.out.println("readline:" + e.getMessage());
+        } catch (ClassNotFoundException ex) {
+            ex.printStackTrace();
+        } finally {
+            try {
+                clientSocket.close();
+            } catch (IOException e) {/*close failed*/}
+        }
     }
 }
